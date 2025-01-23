@@ -26,5 +26,5 @@ int main(void) {
     print_format("_____________________________________________\n");
     print_format("Overall time: %.3f ms\n", (end - start) * 1000.0);
 
-    return 0;
+    return !parsed.success;
 }
