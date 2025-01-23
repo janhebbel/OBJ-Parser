@@ -231,9 +231,15 @@ void print_format(char *format, ...) {
     va_list args;
     va_start(args, format);
 
-#if defined(_CONSOLE)
     vprintf(format, args);
-#else
+
+    va_end(args);
+}
+
+void debug_print_format(char *format, ...) {
+    va_list args;
+    va_start(args, format);
+
     Arena *scratch = begin_scratch();
 
     int len = vsnprintf(NULL, 0, format, args);
@@ -242,7 +248,6 @@ void print_format(char *format, ...) {
     OutputDebugString(out);
 
     end_scratch();
-#endif
 
     va_end(args);
 }
