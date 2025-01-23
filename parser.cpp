@@ -9,7 +9,7 @@ struct Tokenizer {
     String8 file;
 
     // Tokenizer Data
-    S64 offset;
+    char *at;
 };
 
 typedef struct Token Token;
@@ -31,22 +31,39 @@ enum Token_Kind {
 
 Tokenizer make_tokenizer(char *file_data, S64 file_len) {
     Tokenizer t;
-    t.offset = 0;
     if (file_data) {
         t.file = {file_data, file_len};
+        t.at = file_data;
     } else {
         t.file = {"", 0};
+        t.at = t.file.start;
     }
     return t;
 }
 
 Token tokenizer_next_token(Tokenizer *t) {
-    int token_kind = KIND_NONE;
-    if (t->offset == t->file.len)
-        token_kind = KIND_END_OF_FILE;
-    // char c = t->file.start[t->offset]; c;
-    t->offset += 1;
-    return {token_kind, {}};
+    Token token = {};
+
+    if (t->at >= t->file.start + t->file.len) {
+        Assert(t->at == t->file.start + t->file.len);
+        token.kind = KIND_END_OF_FILE;
+    } else {
+        S64 separator_count = 0;
+        String8 word = get_next_word({t->at, t->file.len - (t->at - t->file.start)}, " /\n\r\t\v\f", &separator_count);
+
+        t->at += word.len + separator_count;
+
+        if (0 == string_compare_1l("o", word.start, word.len)  || 
+            0 == string_compare_1l("v", word.start, word.len)  ||
+            0 == string_compare_1l("vt", word.start, word.len) ||
+            0 == string_compare_1l("vn", word.start, word.len) ||
+            0 == string_compare_1l("f", word.start, word.len)) {
+            token.kind = KIND_KEYWORD;
+            token.value = word;
+        }
+    }
+    
+    return token;
 }
 
 void print_token(Token t) {
