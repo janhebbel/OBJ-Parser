@@ -119,9 +119,9 @@ int string_compare(char *a, char *b) {
     return *a - *b;
 }
 
-int string_compare_1l(char *a, char *b, int b_length) {
-    int result, i;
-    i = 0;
+int string_compare_1l(char *a, char *b, S64 b_length) {
+    int result;
+    S64 i = 0;
     while (*a && i < b_length && *a == b[i]) {
         a += 1;
         i += 1;
@@ -134,6 +134,56 @@ int string_compare_1l(char *a, char *b, int b_length) {
         result = *a - b[i];
     }
     return result;
+}
+
+String8 get_next_word(String8 text, char *separators, S64 *separator_count) {
+    String8 word;
+    word.start = text.start;
+    word.len = 0;
+    for (S64 i = 0; i < text.len; ++i) {
+        bool hit = false;
+        char c = text.start[i];
+        char *s = separators;
+        while (*s) {
+            if (*s == c) {
+                hit = true;
+                break;
+            }
+            s += 1;
+        }
+        if (hit) {
+            word.len = i;
+            break;
+        } else if (i == text.len - 1) {
+            word.len = i + 1;
+            break;
+        }
+    }
+    if (separator_count) {
+        for (S64 i = word.len; i < text.len; ++i) {
+            char c = text.start[i];
+            char *s = separators;
+            bool hit = false;
+            while (*s) {
+                if (*s == c) {
+                    hit = true;
+                    break;
+                }
+                s += 1;
+            }
+            if (!hit) {
+                *separator_count = i - word.len;
+                break;
+            } else if (i == text.len - 1) {
+                *separator_count = i - word.len + 1;
+                break;
+            }
+        }
+        if (word.len == text.len) {
+            *separator_count = 0;
+        }
+    }
+    return word;
 }
 
 int string_to_int(char *str, int len) {
