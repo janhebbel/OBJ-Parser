@@ -15,13 +15,13 @@ int main(void) {
     }
 
     double start = get_time_in_seconds();
-    File file = read_file(&parse_arena, "../res/cube.obj");
+    File file = read_file(&parse_arena, "../res/test.obj");
     double mid = get_time_in_seconds();
     Parse_Result parsed = parse((char*)file.data, file.len);
     double end = get_time_in_seconds();
     Assert(parsed.success);
 
-    print_format("Read file in %.3f ms\n", (mid - start) * 1000.0);
+    print_format("Read file '%s' in %.3f ms\n", "../res/test.obj", (mid - start) * 1000.0);
     print_format("Parsed %d lines in %.3f ms\n", parsed.lines_parsed, (end - mid) * 1000.0);
     print_format("_____________________________________________\n");
     print_format("Overall time: %.3f ms\n", (end - start) * 1000.0);
