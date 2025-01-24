@@ -1,5 +1,16 @@
+typedef struct OBJ_Vertex OBJ_Vertex;
+typedef U32 OBJ_Index;
+
+struct OBJ_Vertex {
+    Vec4F32 v;
+    Vec2F32 vt;
+    Vec3F32 vn;
+};
+
 typedef struct Parse_Result Parse_Result;
 struct Parse_Result {
+    OBJ_Vertex *vertices;
+    OBJ_Index *indices;
     S64 lines_parsed;
     bool success;
 };
@@ -43,6 +54,8 @@ Tokenizer make_tokenizer(char *file_data, S64 file_len) {
     return t;
 }
 
+// NOTE(jan): it may be preferable for each keyword to be its own kind
+// especially for the primitive elements situation
 Token next_token(Tokenizer *t) {
     Token token;
 
@@ -141,10 +154,13 @@ void print_token(Token t) {
 Parse_Result parse(char *file_data, S64 file_len) {
     Tokenizer tokenizer = make_tokenizer(file_data, file_len);
 
-    Token tok;
-    while ((tok = next_token(&tokenizer)).kind != KIND_END_OF_FILE) {
+    Token tok = next_token(&tokenizer);
+    while (tok.kind != KIND_END_OF_FILE) {
+
+
         print_token(tok);
+        tok = next_token(&tokenizer);
     }
 
-    return {tokenizer.line_number, true};
+    return {NULL, NULL, tokenizer.line_number, true};
 }

@@ -1,4 +1,5 @@
 #include "basic.cpp"
+#include "basic_math.cpp"
 #include "parser.cpp"
 
 int main(void) {
@@ -21,6 +22,7 @@ int main(void) {
     double end = get_time_in_seconds();
     Assert(parsed.success);
 
+    print_format("\n");
     print_format("Read file '%s' in %.3f ms\n", "../res/test.obj", (mid - start) * 1000.0);
     print_format("Parsed %d lines in %.3f ms\n", parsed.lines_parsed, (end - mid) * 1000.0);
     print_format("_____________________________________________\n");
