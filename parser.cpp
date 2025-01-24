@@ -1,3 +1,5 @@
+typedef struct OBJ_Object OBJ_Object;
+typedef struct OBJ_Group OBJ_Group;
 typedef struct OBJ_Vertex OBJ_Vertex;
 typedef U32 OBJ_Index;
 
@@ -5,6 +7,17 @@ struct OBJ_Vertex {
     Vec4F32 v;
     Vec2F32 vt;
     Vec3F32 vn;
+};
+
+struct OBJ_Group {
+    String8 name;
+    OBJ_Vertex *vertices;
+    OBJ_Index *indices;
+};
+
+struct OBJ_Object {
+    String8 name;
+    OBJ_Group *groups;
 };
 
 typedef struct Parse_Result Parse_Result;
@@ -34,7 +47,11 @@ struct Token {
 
 enum Token_Kind {
     KIND_NONE,
-    KIND_KEYWORD,
+    KIND_KEYWORD_O,
+    KIND_KEYWORD_V,
+    KIND_KEYWORD_VT,
+    KIND_KEYWORD_VN,
+    KIND_KEYWORD_F,
     KIND_NAME,
     KIND_NUMBER,
     KIND_PRIMITIVE_ELEMENT,
@@ -97,33 +114,36 @@ Token next_token(Tokenizer *t) {
     word = get_next_word(text_to_go, " \r\n\t\v\f");
     if (is_letter(*t->at)) {
         // Keyword or Name
-        if (0 == string_compare("o",  word.start, word.len) ||
-            0 == string_compare("v",  word.start, word.len) ||
-            0 == string_compare("vt", word.start, word.len) ||
-            0 == string_compare("vn", word.start, word.len) ||
-            0 == string_compare("f",  word.start, word.len)) {
-            // Keyword
-            token.kind = KIND_KEYWORD;
-            if (word.start[0] == 'f') {
-                t->last_keyword = 'f';
-            } else {
-                t->last_keyword = 0;
-            }
+        if (0 == string_compare("f", word.start, word.len)) {
+            token.kind = KIND_KEYWORD_F;
+            t->last_keyword = KIND_KEYWORD_F;
         } else {
-            // Name
-            token.kind = KIND_NAME;
+            t->last_keyword = 0;
+            if (0) {
+            } else if (0 == string_compare("o",  word.start, word.len)) {
+                token.kind = KIND_KEYWORD_O;
+            } else if (0 == string_compare("v",  word.start, word.len)) {
+                token.kind = KIND_KEYWORD_V;
+            } else if (0 == string_compare("vt", word.start, word.len)) {
+                token.kind = KIND_KEYWORD_VT;
+            } else if (0 == string_compare("vn", word.start, word.len)) {
+                token.kind = KIND_KEYWORD_VN;
+            } else {
+                token.kind = KIND_NAME;
+            }
         }
     } else if (is_digit(*t->at) || *t->at == '.' || *t->at == '-' || *t->at == '+') {
         // Number or Primitive Element
-        if (t->last_keyword == 'f')
+        if (t->last_keyword == KIND_KEYWORD_F)
             token.kind = KIND_PRIMITIVE_ELEMENT;
         else
             token.kind = KIND_NUMBER;
     } else if (t->at >= t->file.start + t->file.len) {
+        // End of file
         Assert(t->at == t->file.start + t->file.len);
         token.kind = KIND_END_OF_FILE;
     } else {
-        // Unhandled token kind
+        // Unhandled kind of token
         token.kind = KIND_NONE;
     }
     offset_by = word.len;
@@ -136,7 +156,11 @@ Token next_token(Tokenizer *t) {
 void print_token(Token t) {
     char *enum_to_string[] = {
         "none",
-        "keyword",
+        "o",
+        "v",
+        "vt",
+        "vn",
+        "f",
         "name",
         "number",
         "primitive element",
@@ -151,12 +175,17 @@ void print_token(Token t) {
     end_scratch();
 }
 
-Parse_Result parse(char *file_data, S64 file_len) {
+Parse_Result parse(Arena *arena, char *file_data, S64 file_len) {
     Tokenizer tokenizer = make_tokenizer(file_data, file_len);
 
     Token tok = next_token(&tokenizer);
     while (tok.kind != KIND_END_OF_FILE) {
-
+        if (tok.kind == KIND_KEYWORD_O) {
+            tok = next_token(&tokenizer);
+            if (tok.kind == KIND_NAME) {
+                
+            }
+        }
 
         print_token(tok);
         tok = next_token(&tokenizer);
