@@ -83,31 +83,31 @@ struct File {
 Arena global_scratch_arena;
 
 // Useful functions
-int is_end_of_line(char c) {
+bool is_end_of_line(char c) {
     return (c == '\n') || (c == '\r');
 }
 
-int is_spacing(char c) {
+bool is_spacing(char c) {
     return (c == ' ') || (c == '\t') || (c == '\v') || (c == '\f');
 }
 
-int is_whitespace(char c) {
+bool is_whitespace(char c) {
     return is_spacing(c) || is_end_of_line(c);
 }
 
-int is_letter(char c) {
+bool is_letter(char c) {
     return c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z';
 }
 
-int is_digit(char c) {
+bool is_digit(char c) {
     return c >= '0' && c <= '9';
 }
 
-int is_alphanumeric(char c) {
+bool is_alphanumeric(char c) {
     return is_letter(c) || is_digit(c);
 }
 
-int is_power_of_two(uintptr_t x) {
+bool is_power_of_two(uintptr_t x) {
     return (x & (x-1)) == 0;
 }
 
@@ -136,7 +136,7 @@ int string_compare(char *a, char *b, S64 b_length) {
     return result;
 }
 
-String8 get_next_word(String8 text, char *separators, S64 *separator_count) {
+String8 get_next_word(String8 text, char *separators, S64 *separator_count = NULL) {
     String8 word;
     word.start = text.start;
     word.len = 0;
@@ -184,6 +184,27 @@ String8 get_next_word(String8 text, char *separators, S64 *separator_count) {
         }
     }
     return word;
+}
+
+String8 get_next_word(String8 text, bool (*test)(char)) {
+    String8 word;
+    word.start = text.start;
+    word.len = 0;
+    for (S64 i = 0; i < text.len; ++i) {
+        if (!test(text.start[i])) {
+            word.len = i;
+            break;
+        }
+        if (i == text.len - 1) {
+            word.len = i + 1;
+            break;
+        }
+    }
+    return word;
+}
+
+String8 get_next_line(String8 text) {
+    return get_next_word(text, "\r\n");
 }
 
 int string_to_int(char *str, int len) {
