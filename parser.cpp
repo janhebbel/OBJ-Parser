@@ -10,6 +10,7 @@ struct Tokenizer {
 
     // Tokenizer Data
     char *at;
+    S64 line_number;
 };
 
 typedef struct Token Token;
@@ -42,7 +43,7 @@ Tokenizer make_tokenizer(char *file_data, S64 file_len) {
 }
 
 Token tokenizer_next_token(Tokenizer *t) {
-    Token token = {};
+    Token token;
 
     if (t->at >= t->file.start + t->file.len) {
         Assert(t->at == t->file.start + t->file.len);
@@ -53,14 +54,21 @@ Token tokenizer_next_token(Tokenizer *t) {
 
         t->at += word.len + separator_count;
 
-        if (0 == string_compare_1l("o", word.start, word.len)  || 
-            0 == string_compare_1l("v", word.start, word.len)  ||
-            0 == string_compare_1l("vt", word.start, word.len) ||
-            0 == string_compare_1l("vn", word.start, word.len) ||
-            0 == string_compare_1l("f", word.start, word.len)) {
+        if (0 == string_compare("o", word.start, word.len)  || 
+            0 == string_compare("v", word.start, word.len)  ||
+            0 == string_compare("vt", word.start, word.len) ||
+            0 == string_compare("vn", word.start, word.len) ||
+            0 == string_compare("f", word.start, word.len)) {
+            // Keywords
             token.kind = KIND_KEYWORD;
-            token.value = word;
+        } else if (0 == string_compare("#", word.start, word.len)) {
+            // Comments
+            // token.kind = KIND_COMMENT
+        } else {
+            token.kind = KIND_NONE;
         }
+
+        token.value = word;
     }
     
     return token;
@@ -68,13 +76,14 @@ Token tokenizer_next_token(Tokenizer *t) {
 
 void print_token(Token t) {
     char *enum_to_string[] = {
-        "none",
-        "keyword",
-        "variable",
-        "literal",
+        "       none",
+        "    keyword",
+        "   variable",
+        "    literal",
         "punctuation",
+        "end_of_line",
         "end_of_file",
-        "count",
+        "      count",
     };
 
     Arena *scratch = begin_scratch();
