@@ -91,13 +91,21 @@ Token next_token(Tokenizer *t) {
             0 == string_compare("f",  word.start, word.len)) {
             // Keyword
             token.kind = KIND_KEYWORD;
+            if (word.start[0] == 'f') {
+                t->last_keyword = 'f';
+            } else {
+                t->last_keyword = 0;
+            }
         } else {
             // Name
             token.kind = KIND_NAME;
         }
     } else if (is_digit(*t->at) || *t->at == '.' || *t->at == '-' || *t->at == '+') {
         // Number or Primitive Element
-        token.kind = KIND_NUMBER;
+        if (t->last_keyword == 'f')
+            token.kind = KIND_PRIMITIVE_ELEMENT;
+        else
+            token.kind = KIND_NUMBER;
     } else if (t->at >= t->file.start + t->file.len) {
         Assert(t->at == t->file.start + t->file.len);
         token.kind = KIND_END_OF_FILE;
@@ -118,14 +126,15 @@ void print_token(Token t) {
         "keyword",
         "name",
         "number",
-        "end_of_file",
+        "primitive element",
+        "end of file",
         "count",
     };
 
     Arena *scratch = begin_scratch();
     char *cstring = (char*)arena_alloc(scratch, t.value.len + 1);
     snprintf(cstring, t.value.len + 1, "%s", t.value.start);
-    print_format("[kind: %s, value: '%s']\n", enum_to_string[t.kind], cstring);
+    print_format("[%s, '%s']\n", enum_to_string[t.kind], cstring);
     end_scratch();
 }
 
