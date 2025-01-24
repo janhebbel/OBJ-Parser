@@ -119,7 +119,7 @@ int string_compare(char *a, char *b) {
     return *a - *b;
 }
 
-int string_compare_1l(char *a, char *b, S64 b_length) {
+int string_compare(char *a, char *b, S64 b_length) {
     int result;
     S64 i = 0;
     while (*a && i < b_length && *a == b[i]) {
