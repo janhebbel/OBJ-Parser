@@ -43,7 +43,7 @@ Tokenizer make_tokenizer(char *file_data, S64 file_len) {
     return t;
 }
 
-Token tokenizer_next_token(Tokenizer *t) {
+Token next_token(Tokenizer *t) {
     Token token;
 
     String8 text_to_go = {t->at, t->file.len - (t->at - t->file.start)};
@@ -133,7 +133,7 @@ Parse_Result parse(char *file_data, S64 file_len) {
     Tokenizer tokenizer = make_tokenizer(file_data, file_len);
 
     Token tok;
-    while ((tok = tokenizer_next_token(&tokenizer)).kind != KIND_END_OF_FILE) {
+    while ((tok = next_token(&tokenizer)).kind != KIND_END_OF_FILE) {
         print_token(tok);
     }
 
