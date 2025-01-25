@@ -15,19 +15,13 @@ int main(void) {
         return 1;
     }
 
-    char *file_name = "../res/cube.obj";
+    char *file_name = "../res/test.obj";
     double start = get_time_in_seconds();
-    File file = read_file(&perm, file_name);
-    double mid = get_time_in_seconds();
-    Parse_Result parsed = parse(&perm, (char*)file.data, file.len);
+    Parse_Result parsed = parse(&perm, file_name);
     double end = get_time_in_seconds();
-    Assert(parsed.success);
 
-    print_format("\n");
-    print_format("Read file '%s' in %.3f ms\n", file_name, (mid - start) * 1000.0);
-    print_format("Parsed %d lines in %.3f ms\n", parsed.lines_parsed, (end - mid) * 1000.0);
-    print_format("_____________________________________________\n");
-    print_format("Overall time: %.3f ms\n", (end - start) * 1000.0);
+    print_format("\n%s\n", parsed.success ? "Success!" : "Error!");
+    print_format("Parsed %d line(s) in %.3f ms\n", parsed.lines_parsed, (end - start) * 1000.0);
 
     return !parsed.success;
 }

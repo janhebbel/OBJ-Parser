@@ -32,6 +32,7 @@ typedef struct Tokenizer Tokenizer;
 struct Tokenizer {
     // File data
     String8 file;
+    char *file_name;
 
     // Tokenizer Data
     char *at;
@@ -53,14 +54,16 @@ enum Token_Kind {
     KIND_KEYWORD_VN,
     KIND_KEYWORD_F,
     KIND_NAME,
-    KIND_NUMBER,
+    KIND_INT,
+    KIND_FLOAT,
     KIND_PRIMITIVE_ELEMENT,
     KIND_END_OF_FILE,
     KIND_COUNT,
 };
 
-Tokenizer make_tokenizer(char *file_data, S64 file_len) {
+Tokenizer make_tokenizer(char *file_name, char *file_data, S64 file_len) {
     Tokenizer t = {};
+    t.file_name = file_name;
     if (file_data) {
         t.file = {file_data, file_len};
         t.at = file_data;
@@ -69,6 +72,14 @@ Tokenizer make_tokenizer(char *file_data, S64 file_len) {
         t.at = t.file.start;
     }
     return t;
+}
+
+bool valid_name (String8 word) {
+    bool valid = word.len > 0 && (is_letter(word.start[0]) || word.start[0] == '_');
+    for (int i = 1; i < word.len && valid; i += 1) {
+        valid = valid && (is_letter(word.start[i]) || is_digit(word.start[i]) || word.start[i] == '_');
+    }
+    return valid;
 }
 
 // NOTE(jan): it may be preferable for each keyword to be its own kind
@@ -112,40 +123,46 @@ Token next_token(Tokenizer *t) {
 
     // Tokenize next word
     word = get_next_word(text_to_go, " \r\n\t\v\f");
-    if (is_letter(*t->at)) {
-        // Keyword or Name
-        if (0 == string_compare("f", word.start, word.len)) {
-            token.kind = KIND_KEYWORD_F;
-            t->last_keyword = KIND_KEYWORD_F;
-        } else {
-            t->last_keyword = 0;
-            if (0) {
-            } else if (0 == string_compare("o",  word.start, word.len)) {
-                token.kind = KIND_KEYWORD_O;
-            } else if (0 == string_compare("v",  word.start, word.len)) {
-                token.kind = KIND_KEYWORD_V;
-            } else if (0 == string_compare("vt", word.start, word.len)) {
-                token.kind = KIND_KEYWORD_VT;
-            } else if (0 == string_compare("vn", word.start, word.len)) {
-                token.kind = KIND_KEYWORD_VN;
+    if (t->at < t->file.start + t->file.len) {
+        Assert(word.len > 0);
+        char c = word.start[0];
+        if (is_letter(c)) {
+            // Keyword or Name
+            if (0 == string_compare("f", word.start, word.len)) {
+                token.kind = KIND_KEYWORD_F;
+                t->last_keyword = KIND_KEYWORD_F;
             } else {
-                token.kind = KIND_NAME;
+                t->last_keyword = 0;
+                if (0) {
+                } else if (0 == string_compare("o",  word.start, word.len)) {
+                    token.kind = KIND_KEYWORD_O;
+                } else if (0 == string_compare("v",  word.start, word.len)) {
+                    token.kind = KIND_KEYWORD_V;
+                } else if (0 == string_compare("vt", word.start, word.len)) {
+                    token.kind = KIND_KEYWORD_VT;
+                } else if (0 == string_compare("vn", word.start, word.len)) {
+                    token.kind = KIND_KEYWORD_VN;
+                } else {
+                    // if (!valid_name(word)) {
+                    //     print_format("%s (%d): syntax error: Expected a name.\n", t->file_name, t->line_number);
+                    // }
+                    token.kind = KIND_NAME;
+                }
+            }
+        } else if (is_digit(c) || c == '.' || c == '-' || c == '+') {
+            // Number or Primitive Element
+            if (t->last_keyword == KIND_KEYWORD_F) {
+                token.kind = KIND_PRIMITIVE_ELEMENT;
+            } else {
+                token.kind = KIND_INT;
             }
         }
-    } else if (is_digit(*t->at) || *t->at == '.' || *t->at == '-' || *t->at == '+') {
-        // Number or Primitive Element
-        if (t->last_keyword == KIND_KEYWORD_F)
-            token.kind = KIND_PRIMITIVE_ELEMENT;
-        else
-            token.kind = KIND_NUMBER;
-    } else if (t->at >= t->file.start + t->file.len) {
+    } else {
         // End of file
         Assert(t->at == t->file.start + t->file.len);
         token.kind = KIND_END_OF_FILE;
-    } else {
-        // Unhandled kind of token
-        token.kind = KIND_NONE;
     }
+
     offset_by = word.len;
     token.value = word;
     t->at += offset_by;
@@ -162,7 +179,8 @@ void print_token(Token t) {
         "vn",
         "f",
         "name",
-        "number",
+        "int",
+        "float",
         "primitive element",
         "end of file",
         "count",
@@ -175,21 +193,54 @@ void print_token(Token t) {
     end_scratch();
 }
 
-Parse_Result parse(Arena *arena, char *file_data, S64 file_len) {
-    Tokenizer tokenizer = make_tokenizer(file_data, file_len);
+enum Parser_State {
+    STATE_INITIAL,
+    STATE_NAME,
+    STATE_FLOAT,
+    STATE_INT,
+};
 
+Parse_Result parse(Arena *arena, char *file_name) {
+    File file = read_file(arena, file_name);
+    if (!file.success) {
+        print_format("Failed to read file %s.\n", file_name);
+    }
+
+    Tokenizer tokenizer = make_tokenizer(file_name, (char *)file.data, file.len);
+
+    // int state = STATE_INITIAL;
+
+    bool error = false;
     Token tok = next_token(&tokenizer);
     while (tok.kind != KIND_END_OF_FILE) {
-        if (tok.kind == KIND_KEYWORD_O) {
-            tok = next_token(&tokenizer);
-            if (tok.kind == KIND_NAME) {
-                
-            }
-        }
+        // switch (state) {
+        // case STATE_INITIAL:
+        //     switch (tok.kind) {
+        //     case KIND_KEYWORD_O:
+        //         // expect = {1, KIND_NAME};
+        //         break;
+        //     case KIND_KEYWORD_V:
+        //         // expect = {3, KIND_FLOAT};
+        //     case KIND_KEYWORD_VT:
+
+        //     case KIND_KEYWORD_VN:
+        //     case KIND_KEYWORD_F:
+        //         break;
+        //     default:
+        //         error = true;
+        //         print_format("Error while parsing (%d): Exepected a keyword.\n", tokenizer.line_number);
+        //         break;
+        //     }
+        //     break;
+        // }
+
+        // if (error) {
+        //     break;
+        // }
 
         print_token(tok);
         tok = next_token(&tokenizer);
     }
 
-    return {NULL, NULL, tokenizer.line_number, true};
+    return {NULL, NULL, tokenizer.line_number, !error && file.success};
 }
