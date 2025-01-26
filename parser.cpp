@@ -37,7 +37,6 @@ struct Tokenizer {
     // Tokenizer Data
     char *at;
     S64 line_number = 1;
-    int last_keyword;
 };
 
 typedef struct Token Token;
@@ -54,7 +53,8 @@ enum Token_Kind {
     KIND_KEYWORD_VN,
     KIND_KEYWORD_F,
     KIND_NAME,
-    KIND_NUMBER,
+    KIND_FLOAT,
+    KIND_INTEGER,
     KIND_PRIMITIVE_ELEMENT,
     KIND_END_OF_FILE,
     KIND_COUNT,
@@ -97,8 +97,6 @@ bool valid_float(String8 word) {
     }
 
     if (valid && e_count == 1) {
-        decimal_points = 0;
-
         valid = valid && word.len > i && is_digit(word.start[i]);
         if (!valid) {
             valid = (word.start[i] == '-' || word.start[i] == '+') && word.len > i + 1 && is_digit(word.start[i + 1]);
@@ -107,10 +105,65 @@ bool valid_float(String8 word) {
 
         while (i < word.len && valid) {
             e_count += ((word.start[i] == 'e') || (word.start[i] == 'E'));
-            decimal_points += (word.start[i] == '.');
             valid = valid && e_count == 1 && is_digit(word.start[i]);
             i += 1;
         }
+    }
+
+    return valid;
+}
+
+bool valid_int(String8 word) {
+    int i = 0;
+    bool valid, start;
+    valid = word.len > 0;
+    start = true;
+    if (word.len > 0 && (word.start[i] == '+' || word.start[i] == '-')) {
+        i += 1;
+    }
+    while (i < word.len && valid) {
+        if (start && word.start[i] == '0') {
+            valid = false;
+            break;
+        }
+        if (!is_digit(word.start[i])) {
+            valid = false;
+            break;
+        }
+        start = false;
+        i += 1;
+    }
+    return valid;
+}
+
+bool valid_primitive_element(String8 word) {
+    // int, int/int, int//int, int/int/int
+    int i, first_slash, second_slash;
+    i = 0, first_slash = -1, second_slash = -1;
+    while (i < word.len) {
+        if (first_slash == -1 && word.start[i] == '/') {
+            first_slash = i;
+        } else if (second_slash == -1 && word.start[i] == '/') {
+            second_slash = i;
+        }
+        i += 1;
+    }
+
+    bool valid = true;
+    if (first_slash == -1) {
+        // int
+        valid = valid_int(word);
+    } else if (first_slash != -1 && second_slash == -1) {
+        // int/int
+        valid = valid_int({word.start, first_slash}) && valid_int({word.start + first_slash + 1, word.len - first_slash - 1});
+    } else if (first_slash != -1 && second_slash != -1 && first_slash + 1 == second_slash) {
+        // int//int
+        valid = valid_int({word.start, first_slash}) && valid_int({word.start + second_slash + 1, word.len - second_slash - 1});
+    } else {
+        // int/int/int
+        valid = valid && valid_int({word.start, first_slash});
+        valid = valid && valid_int({word.start + first_slash + 1, second_slash - first_slash - 1});
+        valid = valid && valid_int({word.start + second_slash + 1, word.len - second_slash - 1});
     }
 
     return valid;
@@ -168,33 +221,56 @@ Token next_token(Tokenizer *t) {
         char c = word.start[0];
         if (is_letter(c)) {
             // Keyword or Name
-            if (0 == string_compare("f", word.start, word.len)) {
+            if (0) {
+            } else if (0 == string_compare("o",  word.start, word.len)) {
+                token.kind = KIND_KEYWORD_O;
+            } else if (0 == string_compare("v",  word.start, word.len)) {
+                token.kind = KIND_KEYWORD_V;
+            } else if (0 == string_compare("vt", word.start, word.len)) {
+                token.kind = KIND_KEYWORD_VT;
+            } else if (0 == string_compare("vn", word.start, word.len)) {
+                token.kind = KIND_KEYWORD_VN;
+            } else if (0 == string_compare("f", word.start, word.len)) {
                 token.kind = KIND_KEYWORD_F;
-                t->last_keyword = KIND_KEYWORD_F;
             } else {
-                t->last_keyword = 0;
-                if (0) {
-                } else if (0 == string_compare("o",  word.start, word.len)) {
-                    token.kind = KIND_KEYWORD_O;
-                } else if (0 == string_compare("v",  word.start, word.len)) {
-                    token.kind = KIND_KEYWORD_V;
-                } else if (0 == string_compare("vt", word.start, word.len)) {
-                    token.kind = KIND_KEYWORD_VT;
-                } else if (0 == string_compare("vn", word.start, word.len)) {
-                    token.kind = KIND_KEYWORD_VN;
-                } else {
-                    // if (!valid_name(word)) {
-                    //     print_format("%s (%d): syntax error: Expected a name.\n", t->file_name, t->line_number);
-                    // }
+                if (valid_name(word)) {
                     token.kind = KIND_NAME;
+                } else {
+                    printf("%s (%lld): syntax error: Expected a name.\n", t->file_name, t->line_number);
+                    token.kind = KIND_NONE;
                 }
             }
         } else if (is_digit(c) || c == '.' || c == '-' || c == '+') {
             // Number or Primitive Element
-            if (t->last_keyword == KIND_KEYWORD_F) {
-                token.kind = KIND_PRIMITIVE_ELEMENT;
+            bool primitive_element = false;
+            bool has_digits = is_digit(c);
+            for (int i = 1; i < word.len && has_digits; i += 1) {
+                has_digits = is_digit(word.start[i]);
+                if (word.start[i] == '/') {
+                    primitive_element = true;
+                    break;
+                }
+            }
+            if (primitive_element) {
+                // Primitive element
+                if (valid_primitive_element(word)) {
+                    token.kind = KIND_PRIMITIVE_ELEMENT;
+                } else {
+                    printf("%s (%lld): syntax error: Expected a primitive element.\n", t->file_name, t->line_number);
+                    token.kind = KIND_NONE;
+                }
             } else {
-                token.kind = KIND_NUMBER;
+                // Number
+                if (valid_int(word)) {
+                    // Integer
+                    token.kind = KIND_INTEGER;
+                } else if (valid_float(word)) {
+                    // Float
+                    token.kind = KIND_FLOAT;
+                } else {
+                    printf("%s (%lld): syntax error: Expected a number.\n", t->file_name, t->line_number);
+                    token.kind = KIND_NONE;
+                }
             }
         }
     } else {
@@ -219,7 +295,8 @@ void print_token(Token t) {
         "vn",
         "f",
         "name",
-        "number",
+        "float",
+        "integer",
         "primitive element",
         "end of file",
         "count",
@@ -228,7 +305,7 @@ void print_token(Token t) {
     Arena *scratch = begin_scratch();
     char *cstring = (char*)arena_alloc(scratch, t.value.len + 1);
     snprintf(cstring, t.value.len + 1, "%s", t.value.start);
-    print_format("[%s, '%s']\n", enum_to_string[t.kind], cstring);
+    printf("[%s, '%s']\n", enum_to_string[t.kind], cstring);
     end_scratch();
 }
 
@@ -242,7 +319,7 @@ enum Parser_State {
 Parse_Result parse(Arena *arena, char *file_name) {
     File file = read_file(arena, file_name);
     if (!file.success) {
-        print_format("Failed to read file %s.\n", file_name);
+        printf("Failed to read file %s.\n", file_name);
     }
 
     Tokenizer tokenizer = make_tokenizer(file_name, (char *)file.data, file.len);
@@ -252,6 +329,11 @@ Parse_Result parse(Arena *arena, char *file_name) {
     bool error = false;
     Token tok = next_token(&tokenizer);
     while (tok.kind != KIND_END_OF_FILE) {
+        if (tok.kind == KIND_NONE) {
+            error = true;
+            break;
+        }
+
         // switch (state) {
         // case STATE_INITIAL:
         //     switch (tok.kind) {
@@ -267,17 +349,13 @@ Parse_Result parse(Arena *arena, char *file_name) {
         //         break;
         //     default:
         //         error = true;
-        //         print_format("Error while parsing (%d): Exepected a keyword.\n", tokenizer.line_number);
+        //         printf("Error while parsing (%d): Exepected a keyword.\n", tokenizer.line_number);
         //         break;
         //     }
         //     break;
         // }
 
-        // if (error) {
-        //     break;
-        // }
-
-        print_token(tok);
+        // print_token(tok);
         tok = next_token(&tokenizer);
     }
 
