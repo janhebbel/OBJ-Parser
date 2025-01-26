@@ -54,8 +54,7 @@ enum Token_Kind {
     KIND_KEYWORD_VN,
     KIND_KEYWORD_F,
     KIND_NAME,
-    KIND_INT,
-    KIND_FLOAT,
+    KIND_NUMBER,
     KIND_PRIMITIVE_ELEMENT,
     KIND_END_OF_FILE,
     KIND_COUNT,
@@ -74,7 +73,50 @@ Tokenizer make_tokenizer(char *file_name, char *file_data, S64 file_len) {
     return t;
 }
 
-bool valid_name (String8 word) {
+bool valid_float(String8 word) {
+    int i = 0;
+    bool sign = word.start[i] == '-' || word.start[i] == '+';
+    i += sign;
+
+    bool dot = word.len > i && word.start[i] == '.';
+    bool digit = word.len > i && is_digit(word.start[i]);
+    bool next_is_digit = word.len > i + 1 && is_digit(word.start[i + 1]);
+    bool valid = digit || (sign && digit) || (dot && next_is_digit) || (sign && dot && next_is_digit);
+    i += digit + dot + next_is_digit;
+
+    int decimal_points, e_count;
+    decimal_points = 0;
+    e_count = 0;
+    while (i < word.len && valid && e_count == 0) {
+        e_count += ((word.start[i] == 'e') || (word.start[i] == 'E'));
+        decimal_points += (word.start[i] == '.');
+        if (e_count == 0) {
+            valid = valid && (is_digit(word.start[i]) || word.start[i] == '.') && decimal_points <= 1;
+        }
+        i += 1;
+    }
+
+    if (valid && e_count == 1) {
+        decimal_points = 0;
+
+        valid = valid && word.len > i && is_digit(word.start[i]);
+        if (!valid) {
+            valid = (word.start[i] == '-' || word.start[i] == '+') && word.len > i + 1 && is_digit(word.start[i + 1]);
+            i += 1;
+        }
+
+        while (i < word.len && valid) {
+            e_count += ((word.start[i] == 'e') || (word.start[i] == 'E'));
+            decimal_points += (word.start[i] == '.');
+            valid = valid && e_count == 1 && is_digit(word.start[i]);
+            i += 1;
+        }
+    }
+
+    return valid;
+}
+
+bool valid_name(String8 word) {
     bool valid = word.len > 0 && (is_letter(word.start[0]) || word.start[0] == '_');
     for (int i = 1; i < word.len && valid; i += 1) {
         valid = valid && (is_letter(word.start[i]) || is_digit(word.start[i]) || word.start[i] == '_');
@@ -82,8 +124,6 @@ bool valid_name (String8 word) {
     return valid;
 }
 
-// NOTE(jan): it may be preferable for each keyword to be its own kind
-// especially for the primitive elements situation
 Token next_token(Tokenizer *t) {
     Token token;
 
@@ -154,7 +194,7 @@ Token next_token(Tokenizer *t) {
             if (t->last_keyword == KIND_KEYWORD_F) {
                 token.kind = KIND_PRIMITIVE_ELEMENT;
             } else {
-                token.kind = KIND_INT;
+                token.kind = KIND_NUMBER;
             }
         }
     } else {
@@ -166,7 +206,7 @@ Token next_token(Tokenizer *t) {
     offset_by = word.len;
     token.value = word;
     t->at += offset_by;
-    
+
     return token;
 }
 
@@ -179,8 +219,7 @@ void print_token(Token t) {
         "vn",
         "f",
         "name",
-        "int",
-        "float",
+        "number",
         "primitive element",
         "end of file",
         "count",
