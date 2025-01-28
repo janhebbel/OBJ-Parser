@@ -20,10 +20,14 @@ struct OBJ_Object {
     OBJ_Group *groups;
 };
 
+typedef struct OBJ_Scene OBJ_Scene;
+struct OBJ_Scene {
+    OBJ_Object *first;
+};
+
 typedef struct Parse_Result Parse_Result;
 struct Parse_Result {
-    OBJ_Vertex *vertices;
-    OBJ_Index *indices;
+    OBJ_Scene scene;
     S64 lines_parsed;
     bool success;
 };
@@ -47,11 +51,14 @@ struct Token {
 
 enum Token_Kind {
     KIND_NONE,
+    KIND_KEYWORD,
+    KIND_KEYWORD_BEGIN,
     KIND_KEYWORD_O,
     KIND_KEYWORD_V,
     KIND_KEYWORD_VT,
     KIND_KEYWORD_VN,
     KIND_KEYWORD_F,
+    KIND_KEYWORD_END,
     KIND_NAME,
     KIND_FLOAT,
     KIND_INTEGER,
@@ -155,10 +162,12 @@ bool valid_primitive_element(String8 word) {
         valid = valid_int(word);
     } else if (first_slash != -1 && second_slash == -1) {
         // int/int
-        valid = valid_int({word.start, first_slash}) && valid_int({word.start + first_slash + 1, word.len - first_slash - 1});
+        valid = valid_int({word.start, first_slash}) && 
+            valid_int({word.start + first_slash + 1, word.len - first_slash - 1});
     } else if (first_slash != -1 && second_slash != -1 && first_slash + 1 == second_slash) {
         // int//int
-        valid = valid_int({word.start, first_slash}) && valid_int({word.start + second_slash + 1, word.len - second_slash - 1});
+        valid = valid_int({word.start, first_slash}) && 
+            valid_int({word.start + second_slash + 1, word.len - second_slash - 1});
     } else {
         // int/int/int
         valid = valid && valid_int({word.start, first_slash});
@@ -236,7 +245,8 @@ Token next_token(Tokenizer *t) {
                 if (valid_name(word)) {
                     token.kind = KIND_NAME;
                 } else {
-                    printf("%s (%lld): syntax error: Expected a name.\n", t->file_name, t->line_number);
+                    printf("%s (%lld): syntax error: Expected a name. Got: %.*s\n", 
+                        t->file_name, t->line_number, (int)word.len, word.start);
                     token.kind = KIND_NONE;
                 }
             }
@@ -256,7 +266,8 @@ Token next_token(Tokenizer *t) {
                 if (valid_primitive_element(word)) {
                     token.kind = KIND_PRIMITIVE_ELEMENT;
                 } else {
-                    printf("%s (%lld): syntax error: Expected a primitive element.\n", t->file_name, t->line_number);
+                    printf("%s (%lld): syntax error: Expected a primitive element. Got: %.*s\n", 
+                        t->file_name, t->line_number, (int)word.len, word.start);
                     token.kind = KIND_NONE;
                 }
             } else {
@@ -268,7 +279,8 @@ Token next_token(Tokenizer *t) {
                     // Float
                     token.kind = KIND_FLOAT;
                 } else {
-                    printf("%s (%lld): syntax error: Expected a number.\n", t->file_name, t->line_number);
+                    printf("%s (%lld): syntax error: Expected a number. Got: %.*s\n", 
+                        t->file_name, t->line_number, (int)word.len, word.start);
                     token.kind = KIND_NONE;
                 }
             }
@@ -286,35 +298,31 @@ Token next_token(Tokenizer *t) {
     return token;
 }
 
-void print_token(Token t) {
-    char *enum_to_string[] = {
-        "none",
-        "o",
-        "v",
-        "vt",
-        "vn",
-        "f",
-        "name",
-        "float",
-        "integer",
-        "primitive element",
-        "end of file",
-        "count",
-    };
+char *token_kind_to_string[] = {
+    "none",
+    "keyword",
+    "keyword begin",
+    "o",
+    "v",
+    "vt",
+    "vn",
+    "f",
+    "keyword end",
+    "name",
+    "float",
+    "integer",
+    "primitive element",
+    "end of file",
+    "count",
+};
 
+void print_token(Token t) {
     Arena *scratch = begin_scratch();
     char *cstring = (char*)arena_alloc(scratch, t.value.len + 1);
     snprintf(cstring, t.value.len + 1, "%s", t.value.start);
-    printf("[%s, '%s']\n", enum_to_string[t.kind], cstring);
+    printf("[%s, '%s']\n", token_kind_to_string[t.kind], cstring);
     end_scratch();
 }
-
-enum Parser_State {
-    STATE_INITIAL,
-    STATE_NAME,
-    STATE_FLOAT,
-    STATE_INT,
-};
 
 Parse_Result parse(Arena *arena, char *file_name) {
     File file = read_file(arena, file_name);
@@ -322,42 +330,91 @@ Parse_Result parse(Arena *arena, char *file_name) {
         printf("Failed to read file %s.\n", file_name);
     }
 
+    OBJ_Scene scene = {};
+
     Tokenizer tokenizer = make_tokenizer(file_name, (char *)file.data, file.len);
 
-    // int state = STATE_INITIAL;
+    struct {
+        int low;
+        int high;
+        int kind;
+        int count = 0;
+    } expect;
+    expect.kind = KIND_KEYWORD;
 
     bool error = false;
+    int curr_keyword = KIND_KEYWORD;
     Token tok = next_token(&tokenizer);
-    while (tok.kind != KIND_END_OF_FILE) {
-        if (tok.kind == KIND_NONE) {
+    while (tok.kind != KIND_END_OF_FILE && !error) {
+        bool next = true;
+        if (expect.kind == KIND_KEYWORD && (KIND_KEYWORD_BEGIN < tok.kind && tok.kind < KIND_KEYWORD_END)) {
+            switch (tok.kind) {
+            case KIND_KEYWORD_O:
+                expect = {1, 1, KIND_NAME};
+                break;
+            case KIND_KEYWORD_V:
+                expect = {3, 4, KIND_FLOAT};
+                break;
+            case KIND_KEYWORD_VT:
+                expect = {2, 3, KIND_FLOAT};
+                break;
+            case KIND_KEYWORD_VN:
+                expect = {3, 3, KIND_FLOAT};
+                break;
+            case KIND_KEYWORD_F:
+                expect = {3, 3, KIND_PRIMITIVE_ELEMENT};
+                break;
+            default:
+                Assert(0 && "This should not happen.");
+                error = true;
+            }
+            curr_keyword = tok.kind;
+        } else if (expect.kind != KIND_KEYWORD) {
+            if (tok.kind == expect.kind) {
+                switch (tok.kind) {
+                case KIND_NAME:
+                    if (curr_keyword == KIND_KEYWORD_O) {
+                        OBJ_Object *obj = (OBJ_Object*)arena_alloc(arena, sizeof(obj));
+                        obj->name = tok.value;
+                        obj->groups = NULL;
+                        scene.first = obj;
+                    }
+                    break;
+                case KIND_FLOAT:
+                    break;
+                case KIND_INTEGER:
+                    break;
+                case KIND_PRIMITIVE_ELEMENT:
+                    break;
+                default:
+                    Assert(0 && "This should not happen.");
+                    error = true;
+                }
+                expect.count += 1;
+            } else {
+                if (expect.low <= expect.count && expect.count <= expect.high) {
+                    next = false;
+                    expect = {1, 1, KIND_KEYWORD};
+                } else {
+                    printf("%s (%lld): syntax error: Expected a %s. Got: %s\n",
+                        tokenizer.file_name, tokenizer.line_number, 
+                        token_kind_to_string[expect.kind], token_kind_to_string[tok.kind]);
+                    error = true;
+                }
+            }
+        } else {
+            printf("%s (%lld): syntax error: Expected a %s. Got: %s\n",
+                tokenizer.file_name, tokenizer.line_number, 
+                token_kind_to_string[expect.kind], token_kind_to_string[tok.kind]);
             error = true;
-            break;
         }
 
-        // switch (state) {
-        // case STATE_INITIAL:
-        //     switch (tok.kind) {
-        //     case KIND_KEYWORD_O:
-        //         // expect = {1, KIND_NAME};
-        //         break;
-        //     case KIND_KEYWORD_V:
-        //         // expect = {3, KIND_FLOAT};
-        //     case KIND_KEYWORD_VT:
-
-        //     case KIND_KEYWORD_VN:
-        //     case KIND_KEYWORD_F:
-        //         break;
-        //     default:
-        //         error = true;
-        //         printf("Error while parsing (%d): Exepected a keyword.\n", tokenizer.line_number);
-        //         break;
-        //     }
-        //     break;
-        // }
-
         // print_token(tok);
-        tok = next_token(&tokenizer);
+        if (next) {
+            tok = next_token(&tokenizer);
+        }
+        error = error || tok.kind == KIND_NONE;
     }
 
-    return {NULL, NULL, tokenizer.line_number, !error && file.success};
+    return {scene, tokenizer.line_number, !error && file.success};
 }
