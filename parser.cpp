@@ -5,7 +5,7 @@ typedef U32 OBJ_Index;
 
 struct OBJ_Vertex {
     Vec4F32 v;
-    Vec2F32 vt;
+    Vec3F32 vt;
     Vec3F32 vn;
 };
 
@@ -13,21 +13,32 @@ struct OBJ_Group {
     String8 name;
     OBJ_Vertex *vertices;
     OBJ_Index *indices;
+
+    OBJ_Group *next;
+    OBJ_Group *prev;
 };
 
 struct OBJ_Object {
     String8 name;
-    OBJ_Group *groups;
+    OBJ_Vertex *vertices;
+    OBJ_Index *indices;
+
+    OBJ_Group *groups_first;
+    OBJ_Group *groups_last;
+
+    OBJ_Object *next;
+    OBJ_Object *prev;
 };
 
 typedef struct OBJ_Scene OBJ_Scene;
 struct OBJ_Scene {
-    OBJ_Object *first;
+    OBJ_Object *objects_first;
+    OBJ_Object *objects_last;
 };
 
 typedef struct Parse_Result Parse_Result;
 struct Parse_Result {
-    OBJ_Scene scene;
+    OBJ_Scene *scene;
     S64 lines_parsed;
     bool success;
 };
@@ -41,12 +52,13 @@ struct Tokenizer {
     // Tokenizer Data
     char *at;
     S64 line_number = 1;
+    int last_keyword;
 };
 
 typedef struct Token Token;
 struct Token {
-    int kind;
     String8 value;
+    int kind;
 };
 
 enum Token_Kind {
@@ -129,7 +141,7 @@ bool valid_int(String8 word) {
         i += 1;
     }
     while (i < word.len && valid) {
-        if (start && word.start[i] == '0') {
+        if (start && word.start[i] == '0' && word.len != 1) {
             valid = false;
             break;
         }
@@ -162,11 +174,11 @@ bool valid_primitive_element(String8 word) {
         valid = valid_int(word);
     } else if (first_slash != -1 && second_slash == -1) {
         // int/int
-        valid = valid_int({word.start, first_slash}) && 
+        valid = valid_int({word.start, first_slash}) &&
             valid_int({word.start + first_slash + 1, word.len - first_slash - 1});
     } else if (first_slash != -1 && second_slash != -1 && first_slash + 1 == second_slash) {
         // int//int
-        valid = valid_int({word.start, first_slash}) && 
+        valid = valid_int({word.start, first_slash}) &&
             valid_int({word.start + second_slash + 1, word.len - second_slash - 1});
     } else {
         // int/int/int
@@ -181,7 +193,8 @@ bool valid_primitive_element(String8 word) {
 bool valid_name(String8 word) {
     bool valid = word.len > 0 && (is_letter(word.start[0]) || word.start[0] == '_');
     for (int i = 1; i < word.len && valid; i += 1) {
-        valid = valid && (is_letter(word.start[i]) || is_digit(word.start[i]) || word.start[i] == '_');
+        valid = valid && (is_letter(word.start[i]) || is_digit(word.start[i]) || word.start[i] == '_' ||
+            word.start[i] == '.' || word.start[i] == '-');
     }
     return valid;
 }
@@ -245,41 +258,39 @@ Token next_token(Tokenizer *t) {
                 if (valid_name(word)) {
                     token.kind = KIND_NAME;
                 } else {
-                    printf("%s (%lld): syntax error: Expected a name. Got: %.*s\n", 
+                    printf("%s (%lld): syntax error: Expected a name. Got: %.*s\n",
                         t->file_name, t->line_number, (int)word.len, word.start);
                     token.kind = KIND_NONE;
                 }
             }
+            if (KIND_KEYWORD_BEGIN < token.kind && token.kind < KIND_KEYWORD_END) {
+                t->last_keyword = token.kind;
+            }
         } else if (is_digit(c) || c == '.' || c == '-' || c == '+') {
             // Number or Primitive Element
-            bool primitive_element = false;
-            bool has_digits = is_digit(c);
-            for (int i = 1; i < word.len && has_digits; i += 1) {
-                has_digits = is_digit(word.start[i]);
-                if (word.start[i] == '/') {
-                    primitive_element = true;
-                    break;
-                }
-            }
-            if (primitive_element) {
+            if (t->last_keyword == KIND_KEYWORD_F) {
                 // Primitive element
                 if (valid_primitive_element(word)) {
                     token.kind = KIND_PRIMITIVE_ELEMENT;
                 } else {
-                    printf("%s (%lld): syntax error: Expected a primitive element. Got: %.*s\n", 
+                    printf("%s (%lld): syntax error: Expected a primitive element. Got: %.*s\n",
                         t->file_name, t->line_number, (int)word.len, word.start);
                     token.kind = KIND_NONE;
                 }
             } else {
                 // Number
-                if (valid_int(word)) {
+                if (valid_int(word) &&
+                    // Don't parse keywords that expect float as int
+                    t->last_keyword != KIND_KEYWORD_V &&
+                    t->last_keyword != KIND_KEYWORD_VT &&
+                    t->last_keyword != KIND_KEYWORD_VN) {
                     // Integer
                     token.kind = KIND_INTEGER;
                 } else if (valid_float(word)) {
                     // Float
                     token.kind = KIND_FLOAT;
                 } else {
-                    printf("%s (%lld): syntax error: Expected a number. Got: %.*s\n", 
+                    printf("%s (%lld): syntax error: Expected a number. Got: %.*s\n",
                         t->file_name, t->line_number, (int)word.len, word.start);
                     token.kind = KIND_NONE;
                 }
@@ -324,13 +335,70 @@ void print_token(Token t) {
     end_scratch();
 }
 
+//
+// Linked list helper functions.
+// TODO: test linked list and dynamic array performance
+OBJ_Scene *make_scene(Arena *arena) {
+    OBJ_Scene *scene = (OBJ_Scene*)arena_alloc(arena, sizeof(*scene));
+    MemoryZero(scene, sizeof(*scene));
+    return scene;
+}
+
+OBJ_Object *make_object(Arena *arena) {
+    OBJ_Object *object = (OBJ_Object*)arena_alloc(arena, sizeof(*object));
+    MemoryZero(object, sizeof(*object));
+    return object;
+}
+
+void append_object(OBJ_Scene *scene, OBJ_Object *object) {
+    Assert((scene->objects_first != NULL && scene->objects_last != NULL) ||
+        (scene->objects_first == NULL && scene->objects_last == NULL));
+    if (scene->objects_first == NULL && scene->objects_last == NULL) {
+        scene->objects_first = object;
+        scene->objects_last = object;
+    } else if (scene->objects_first != NULL && scene->objects_last != NULL) {
+        object->prev = scene->objects_last;
+        scene->objects_last->next = object;
+        scene->objects_last = object;
+    }
+}
+
+void append_group(OBJ_Object *object, OBJ_Group *group) {
+    Assert((object->groups_first != NULL && object->groups_last != NULL) ||
+        (object->groups_first == NULL && object->groups_last == NULL));
+    if (object->groups_first == NULL && object->groups_last == NULL) {
+        object->groups_first = group;
+        object->groups_last = group;
+    } else if (object->groups_first != NULL && object->groups_last != NULL) {
+        group->prev = object->groups_last;
+        object->groups_last->next = group;
+        object->groups_last = group;
+    }
+}
+
+//
+// Parsing
 Parse_Result parse(Arena *arena, char *file_name) {
+    Arena *scratch = begin_scratch();
+
     File file = read_file(arena, file_name);
     if (!file.success) {
         printf("Failed to read file %s.\n", file_name);
     }
 
-    OBJ_Scene scene = {};
+    OBJ_Scene *scene = make_scene(arena);
+
+    Vec4F32 *positions = (Vec4F32*)arena_alloc(scratch, sizeof(*positions) * 1024 * 1024);
+    Vec3F32 *tex_coords = (Vec3F32*)arena_alloc(scratch, sizeof(*tex_coords) * 1024 * 1024 * 2);
+    Vec3F32 *normals = (Vec3F32*)arena_alloc(scratch, sizeof(*normals) * 1024 * 1024 * 2);
+
+    positions[0] = {};
+    tex_coords[0] = {};
+    normals[0] = {};
+
+    S64 position_index = 1;
+    S64 tex_coord_index = 1;
+    S64 normal_index = 1;
 
     Tokenizer tokenizer = make_tokenizer(file_name, (char *)file.data, file.len);
 
@@ -374,18 +442,70 @@ Parse_Result parse(Arena *arena, char *file_name) {
                 switch (tok.kind) {
                 case KIND_NAME:
                     if (curr_keyword == KIND_KEYWORD_O) {
-                        OBJ_Object *obj = (OBJ_Object*)arena_alloc(arena, sizeof(obj));
-                        obj->name = tok.value;
-                        obj->groups = NULL;
-                        scene.first = obj;
+                        OBJ_Object *object = make_object(arena);
+                        object->name = tok.value;
+                        append_object(scene, object);
                     }
                     break;
                 case KIND_FLOAT:
+                    if (curr_keyword == KIND_KEYWORD_V) {
+                        positions[position_index].v[expect.count] = string_to_float(tok.value.start, (int)tok.value.len);
+                    } else if (curr_keyword == KIND_KEYWORD_VT) {
+                        tex_coords[tex_coord_index].v[expect.count] = string_to_float(tok.value.start, (int)tok.value.len);
+                    } else if (curr_keyword == KIND_KEYWORD_VN) {
+                        normals[normal_index].v[expect.count] = string_to_float(tok.value.start, (int)tok.value.len);
+                    } else {
+                        Assert(0 && "Unhandled.");
+                        error = true;
+                    }
                     break;
                 case KIND_INTEGER:
                     break;
-                case KIND_PRIMITIVE_ELEMENT:
+                case KIND_PRIMITIVE_ELEMENT: {
+                    int first_slash = -1;
+                    int second_slash = -1;
+                    int i = 0;
+                    while (i < tok.value.len) {
+                        if (first_slash == -1 && tok.value.start[i] == '/') {
+                            first_slash = i;
+                        } else if (first_slash != -1 && tok.value.start[i] == '/') {
+                            second_slash = i;
+                            break;
+                        }
+                        i += 1;
+                    }
+
+                    int pe_v_index = 0;
+                    int pe_vt_index = 0;
+                    int pe_vn_index = 0;
+
+                    if (first_slash == -1) {
+                        // int
+                        pe_v_index = string_to_int(tok.value.start, (int)tok.value.len);
+                    } else if (first_slash != -1 && second_slash == -1) {
+                        // int/int
+                        pe_v_index = string_to_int(tok.value.start, first_slash);
+                        pe_vt_index = string_to_int(tok.value.start + first_slash + 1, (int)tok.value.len - first_slash - 1);
+                    } else if (first_slash != -1 && second_slash != -1 && first_slash + 1 == second_slash) {
+                        // int//int
+                        pe_v_index = string_to_int(tok.value.start, first_slash);
+                        pe_vn_index = string_to_int(tok.value.start + second_slash + 1, (int)tok.value.len - second_slash - 1);
+                    } else {
+                        // int/int/int
+                        pe_v_index = string_to_int(tok.value.start, first_slash);
+                        pe_vt_index = string_to_int(tok.value.start + first_slash + 1, second_slash - first_slash - 1);
+                        pe_vn_index = string_to_int(tok.value.start + second_slash + 1, (int)tok.value.len - second_slash - 1);
+                    }
+
+                    if (pe_v_index == 0) {
+                        printf("%s (%lld): Invalid vertex index in face element.", tokenizer.file_name, tokenizer.line_number);
+                        error = true;
+                    }
+
+                    // TODO(jan): fix w == 0
+                    OBJ_Vertex vertex = {positions[pe_v_index], tex_coords[pe_vt_index], normals[pe_vn_index]};
                     break;
+                }
                 default:
                     Assert(0 && "This should not happen.");
                     error = true;
@@ -395,16 +515,19 @@ Parse_Result parse(Arena *arena, char *file_name) {
                 if (expect.low <= expect.count && expect.count <= expect.high) {
                     next = false;
                     expect = {1, 1, KIND_KEYWORD};
+                    position_index += curr_keyword == KIND_KEYWORD_V;
+                    tex_coord_index += curr_keyword == KIND_KEYWORD_VT;
+                    normal_index += curr_keyword == KIND_KEYWORD_VN;
                 } else {
                     printf("%s (%lld): syntax error: Expected a %s. Got: %s\n",
-                        tokenizer.file_name, tokenizer.line_number, 
+                        tokenizer.file_name, tokenizer.line_number,
                         token_kind_to_string[expect.kind], token_kind_to_string[tok.kind]);
                     error = true;
                 }
             }
         } else {
             printf("%s (%lld): syntax error: Expected a %s. Got: %s\n",
-                tokenizer.file_name, tokenizer.line_number, 
+                tokenizer.file_name, tokenizer.line_number,
                 token_kind_to_string[expect.kind], token_kind_to_string[tok.kind]);
             error = true;
         }
@@ -415,6 +538,8 @@ Parse_Result parse(Arena *arena, char *file_name) {
         }
         error = error || tok.kind == KIND_NONE;
     }
+
+    end_scratch();
 
     return {scene, tokenizer.line_number, !error && file.success};
 }

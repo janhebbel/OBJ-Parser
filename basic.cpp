@@ -26,6 +26,9 @@
 
 #define Assert(thing) assert(thing)
 
+// Use this to declare a dynamic array type.
+#define DArray_Type(Name, Type) typedef struct DArray_##Name { Type *data; S64 size; S64 cap; } DArray_##Name
+
 // Limits
 #define  S8_MIN  (S8)0x80
 #define S16_MIN (S16)0x8000
@@ -222,6 +225,8 @@ float string_to_float(char *str, int len) {
     float f = (float)atof(null_terminated_str);
     return f;
 }
+
+// TODO(jan): free lists
 
 Arena arena_create(Byte *backing_buffer, S64 backing_buffer_size) {
     return {backing_buffer, backing_buffer_size, 0};
