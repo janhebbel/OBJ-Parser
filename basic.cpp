@@ -377,5 +377,19 @@ void debug_print_format(char *format, ...) {
 }
 
 // Hashing function which is effective for ASCII strings: djb2
+U64 hash_ascii(char *string) {
+	U64 hash = 5381;
+	while (*string) {
+		hash = (hash << 5) + hash + *string;
+		string += 1;
+	}
+	return hash;
+}
 
+U64 hash_ascii(char *string, S64 length) {
+	U64 hash = 5381;
+	for (S64 i = 0; i < length; i += 1) {
+		hash = (hash << 5) + hash + (unsigned char)string[i];
+	}
+	return hash;
 }
