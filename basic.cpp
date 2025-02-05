@@ -24,6 +24,8 @@
 #define MemorySet(ptr, value, len) memset(ptr, value, len)
 #define MemoryZero(ptr, len) MemorySet(ptr, 0, len)
 
+#define Assert(x) assert(x)
+#define AssertMessage(x, message, ...) do { if (!(x)) { fprintf(stderr, message, __VA_ARGS__); assert(x); } } while (0)
 
 // Use this to declare a dynamic array type.
 #define DArray_Type(Name, Type) typedef struct DArray_##Name { Type *data; S64 size; S64 cap; } DArray_##Name
@@ -281,6 +283,7 @@ size_t get_aligned_size(size_t size, size_t alignment) {
 
 void *arena_alloc(Arena *a, size_t size, size_t alignment = DEFAULT_ALIGNMENT) {
 	size = get_aligned_size(size, alignment);
+	AssertMessage((size & (alignment - 1)) == 0, "The address is not aligned.\n");
 
 	void *memory;
 	if (a->used + size > a->size) {
@@ -295,6 +298,7 @@ void *arena_alloc(Arena *a, size_t size, size_t alignment = DEFAULT_ALIGNMENT) {
 
 		// The minimum amount of memory one can allocate with VirtualAlloc is a single page.
 		U32 page_size = get_page_size(); // Windows typically uses 4K pages
+		AssertMessage(a->minimum_block_size > 0 && (a->minimum_block_size % page_size) == 0, "The minimum block size is not a multiple of the OS page size.\n");
 
 		size_t block_size;
 		if (size > a->minimum_block_size) {
