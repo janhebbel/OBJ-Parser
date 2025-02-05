@@ -81,7 +81,7 @@ enum Token_Kind {
 	KIND_COUNT,
 };
 
-Tokenizer make_tokenizer(char *file_name, char *file_data, S64 file_len) {
+Tokenizer make_tokenizer(char *file_name, char *file_data, size_t file_len) {
 	Tokenizer t = {};
 	t.file_name = file_name;
 	if (file_data) {
@@ -159,7 +159,7 @@ bool valid_int(String8 word) {
 
 bool valid_primitive_element(String8 word) {
 	// int, int/int, int//int, int/int/int
-	int i, first_slash, second_slash;
+	S32 i, first_slash, second_slash;
 	i = 0, first_slash = -1, second_slash = -1;
 	while (i < word.len) {
 		if (first_slash == -1 && word.start[i] == '/') {
@@ -176,15 +176,15 @@ bool valid_primitive_element(String8 word) {
 		valid = valid_int(word);
 	} else if (first_slash != -1 && second_slash == -1) {
 		// int/int
-		valid = valid_int({word.start, first_slash}) && valid_int({word.start + first_slash + 1, word.len - first_slash - 1});
+		valid = valid_int({word.start, (size_t)first_slash}) && valid_int({word.start + (size_t)first_slash + 1, word.len - (size_t)first_slash - 1});
 	} else if (first_slash != -1 && second_slash != -1 && first_slash + 1 == second_slash) {
 		// int//int
-		valid = valid_int({word.start, first_slash}) && valid_int({word.start + second_slash + 1, word.len - second_slash - 1});
+		valid = valid_int({word.start, (size_t)first_slash}) && valid_int({word.start + (size_t)second_slash + 1, word.len - (size_t)second_slash - 1});
 	} else {
 		// int/int/int
-		valid = valid && valid_int({word.start, first_slash});
-		valid = valid && valid_int({word.start + first_slash + 1, second_slash - first_slash - 1});
-		valid = valid && valid_int({word.start + second_slash + 1, word.len - second_slash - 1});
+		valid = valid && valid_int({word.start, (size_t)first_slash});
+		valid = valid && valid_int({word.start + (size_t)first_slash + 1, (size_t)second_slash - (size_t)first_slash - 1});
+		valid = valid && valid_int({word.start + (size_t)second_slash + 1, word.len - (size_t)second_slash - 1});
 	}
 
 	return valid;
@@ -320,12 +320,17 @@ char *token_kind_to_string[] = {
 	"count",
 };
 
-void print_token(Token t) {
-	Arena *scratch = begin_scratch();
-	char *cstring = (char*)arena_alloc(scratch, t.value.len + 1);
-	snprintf(cstring, t.value.len + 1, "%s", t.value.start);
-	printf("[%s, '%s']\n", token_kind_to_string[t.kind], cstring);
-	end_scratch();
+// TODO(Jan): restore functionality
+void print_token(Arena *a, Token t) {
+	// Arena temp = begin_temp_arena(a);
+	// size_t temp_allocation_size = t.value.len + 1;
+	// a->used += temp_allocation_size;
+	// {
+	// 	char *cstring = (char*)arena_alloc(temp, t.value.len + 1);
+	// 	snprintf(cstring, t.value.len + 1, "%s", t.value.start);
+	// 	printf("[%s, '%s']\n", token_kind_to_string[t.kind], cstring);
+	// }
+	// a->used -= temp_allocation_size;
 }
 
 //
@@ -370,8 +375,6 @@ void append_group(OBJ_Object *object, OBJ_Group *group) {
 //
 // Parsing
 Parse_Result parse(Arena *arena, char *file_name) {
-	Arena *scratch = begin_scratch();
-
 	File file = read_file(arena, file_name);
 	if (!file.success) {
 		printf("Failed to read file %s.\n", file_name);
@@ -379,9 +382,9 @@ Parse_Result parse(Arena *arena, char *file_name) {
 
 	OBJ_Scene *scene = make_scene(arena);
 
-	Vec4F32 *positions = (Vec4F32*)arena_alloc(scratch, sizeof(*positions) * 1024 * 1024);
-	Vec3F32 *tex_coords = (Vec3F32*)arena_alloc(scratch, sizeof(*tex_coords) * 1024 * 1024 * 2);
-	Vec3F32 *normals = (Vec3F32*)arena_alloc(scratch, sizeof(*normals) * 1024 * 1024 * 2);
+	Vec4F32 *positions = (Vec4F32*)arena_alloc(arena, sizeof(*positions) * 1024 * 1024);
+	Vec3F32 *tex_coords = (Vec3F32*)arena_alloc(arena, sizeof(*tex_coords) * 1024 * 1024 * 2);
+	Vec3F32 *normals = (Vec3F32*)arena_alloc(arena, sizeof(*normals) * 1024 * 1024 * 2);
 
 	// NOTE(Jan): We leave the first element zeroed. Later we calculate the index and use the following lists to access
 	// the correct position, texture coordinate, and normals. This is a neat trick to zero the values for vertices where
@@ -577,14 +580,12 @@ Parse_Result parse(Arena *arena, char *file_name) {
 			error = true;
 		}
 
-		// print_token(tok);
+		//print_token(tok);
 		if (next) {
 			tok = next_token(&tokenizer);
 		}
 		error = error || tok.kind == KIND_NONE;
 	}
-
-	end_scratch();
 
 	return {scene, tokenizer.line_number, !error && file.success};
 }
