@@ -24,7 +24,6 @@
 #define MemorySet(ptr, value, len) memset(ptr, value, len)
 #define MemoryZero(ptr, len) MemorySet(ptr, 0, len)
 
-#define Assert(thing) assert(thing)
 
 // Use this to declare a dynamic array type.
 #define DArray_Type(Name, Type) typedef struct DArray_##Name { Type *data; S64 size; S64 cap; } DArray_##Name
@@ -271,7 +270,6 @@ size_t get_aligned_size(size_t size, size_t alignment) {
 }
 
 // Arena functions
-void arena_init(Arena *arena, S64 minimum_block_size = 1024 * 1024 * 128) {
 	arena->base = 0;
 	arena->size = 0;
 	arena->used = 0;
@@ -283,16 +281,16 @@ void arena_init(Arena *arena, S64 minimum_block_size = 1024 * 1024 * 128) {
 
 void *arena_alloc(Arena *a, size_t size, size_t alignment = DEFAULT_ALIGNMENT) {
 	size = get_aligned_size(size, alignment);
-	Assert((size & (alignment - 1)) == 0); // Make sure address is actually aligned.
 
 	void *memory;
 	if (a->used + size > a->size) {
 		if (!a->base) {
 			a->base = (U8*)reserve_memory(Gigabytes(2));
 			if (!a->base) {
-				printf("Fatal: Failed to reserve 2 GB of virtual memory.\n");
+				printf("Fatal: Failed to reserve 2 GiB of virtual memory.\n");
 				exit_process(1);
 			}
+			printf("Reserved 2 GiB of virtual address space.\n");
 		}
 
 		// The minimum amount of memory one can allocate with VirtualAlloc is a single page.
@@ -315,7 +313,7 @@ void *arena_alloc(Arena *a, size_t size, size_t alignment = DEFAULT_ALIGNMENT) {
 			exit_process(1);
 		}
 
-		printf("Memory committed.\n");
+		printf("Comitted %llu MiB of virtual memory.\n", block_size / (1024 * 1024));
 
 		a->size += block_size;
 	}
