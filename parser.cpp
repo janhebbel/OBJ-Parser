@@ -320,22 +320,17 @@ char *token_kind_to_string[] = {
 	"count",
 };
 
-// TODO(Jan): restore functionality
-void print_token(Arena *a, Token t) {
-	// Arena temp = begin_temp_arena(a);
-	// size_t temp_allocation_size = t.value.len + 1;
-	// a->used += temp_allocation_size;
-	// {
-	// 	char *cstring = (char*)arena_alloc(temp, t.value.len + 1);
-	// 	snprintf(cstring, t.value.len + 1, "%s", t.value.start);
-	// 	printf("[%s, '%s']\n", token_kind_to_string[t.kind], cstring);
-	// }
-	// a->used -= temp_allocation_size;
+void print_token(Token t) {
+	Arena *scratch = begin_scratch();
+	char *cstring = (char*)arena_alloc(scratch, t.value.len + 1);
+	snprintf(cstring, t.value.len + 1, "%s", t.value.start);
+	printf("[%s, '%s']\n", token_kind_to_string[t.kind], cstring);
+	end_scratch(scratch);
 }
 
 //
 // Linked list helper functions.
-// TODO: test linked list and dynamic array performance
+// TODO(Jan): test linked list and dynamic array performance
 OBJ_Scene *make_scene(Arena *arena) {
 	OBJ_Scene *scene = (OBJ_Scene*)arena_alloc(arena, sizeof(*scene));
 	MemoryZero(scene, sizeof(*scene));
@@ -418,6 +413,7 @@ Parse_Result parse(Arena *arena, char *file_name) {
 	while (tok.kind != KIND_END_OF_FILE && !error) {
 		bool next = true;
 		if (expect.kind == KIND_KEYWORD && (KIND_KEYWORD_BEGIN < tok.kind && tok.kind < KIND_KEYWORD_END)) {
+			// If a keyword is expected and we got a keyword.
 			switch (tok.kind) {
 				case KIND_KEYWORD_O: {
 					expect = {1, 1, KIND_NAME};
@@ -446,11 +442,13 @@ Parse_Result parse(Arena *arena, char *file_name) {
 			}
 			curr_keyword = tok.kind;
 		} else if (expect.kind != KIND_KEYWORD) {
+			// If we didn't expect a keyword.
 			if (tok.kind == expect.kind) {
+				// We got what we expected.
 				switch (tok.kind) {
 					case KIND_NAME: {
 						if (curr_keyword == KIND_KEYWORD_O) {
-							// NOTE(Jan): 02/02/2025
+							// TODO(Jan): 02/02/2025
 							// Depending on the name we need to select the correct object or group. To do this, hashing the
 							// name would be a good idea. However, the amount of objects and groups is relatively small in
 							// most obj files. Therefore, linear search and string_compare are likely enough. If the
@@ -539,7 +537,7 @@ Parse_Result parse(Arena *arena, char *file_name) {
 							error = true;
 						}
 
-						// NOTE(Jan): 02/02/2025
+						// TODO(Jan): 02/02/2025
 						// Maybe make the vertex array growable?
 						// TODO(Jan): Vertices are not yet correctly inserted. If a primitive element is exactly the
 						// same as another one, we don't insert a new vertex. Instead, we look it up and use this index
@@ -555,14 +553,14 @@ Parse_Result parse(Arena *arena, char *file_name) {
 				}
 				expect.count += 1;
 			} else {
+				// We didn't get a keyword and didn't get what we expected.
 				if (expect.low <= expect.count && expect.count <= expect.high) {
+					// If count is within expectation bounds.
 					next = false;
 
-					// NOTE(Jan): When the v keyword is followed by only 3 floats the 4th value (w) must be assigned 1.
+					// When the v keyword is followed by only 3 floats the 4th value (w) must be assigned 1.
 					if (expect.count < expect.high && curr_keyword == KIND_KEYWORD_V) {
-						for (int i = expect.count; i < expect.high; i += 1) {
-							positions[position_index].v[i] = 1.0f;
-						}
+						positions[position_index].v[3] = 1.0f;
 					}
 
 					expect = {1, 1, KIND_KEYWORD};
@@ -571,17 +569,21 @@ Parse_Result parse(Arena *arena, char *file_name) {
 					tex_coord_index += curr_keyword == KIND_KEYWORD_VT;
 					normal_index += curr_keyword == KIND_KEYWORD_VN;
 				} else {
-					printf("%s (%lld): syntax error: Expected a %s. Got: %s\n", tokenizer.file_name, tokenizer.line_number, token_kind_to_string[expect.kind], token_kind_to_string[tok.kind]);
+					// We didn't get a keyword and didn't get what we expected and the count is not within expectations. Error.
+					printf("%s (%lld): syntax error: Expected a %s. Got: %s\n", 
+					       tokenizer.file_name, tokenizer.line_number, token_kind_to_string[expect.kind], token_kind_to_string[tok.kind]);
 					error = true;
 				}
 			}
 		} else {
-			printf("%s (%lld): syntax error: Expected a %s. Got: %s\n", tokenizer.file_name, tokenizer.line_number, token_kind_to_string[expect.kind], token_kind_to_string[tok.kind]);
+			// We didn't get what we expected. Error.
+			printf("%s (%lld): syntax error: Expected a %s. Got: %s\n", 
+			       tokenizer.file_name, tokenizer.line_number, token_kind_to_string[expect.kind], token_kind_to_string[tok.kind]);
 			error = true;
 		}
 
-		//print_token(tok);
 		if (next) {
+			// print_token(tok);
 			tok = next_token(&tokenizer);
 		}
 		error = error || tok.kind == KIND_NONE;

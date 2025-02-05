@@ -82,6 +82,10 @@ struct File {
 	size_t len;
 };
 
+// Global variables
+Arena _scratch = {0, 0, 0, Megabytes(1)};
+
+// Forward declarations
 U32 get_page_size(void);
 
 void *allocate_memory(size_t size);
@@ -294,12 +298,13 @@ void *arena_alloc(Arena *a, size_t size, size_t alignment = DEFAULT_ALIGNMENT) {
 				printf("Fatal: Failed to reserve 2 GiB of virtual memory.\n");
 				exit_process(1);
 			}
-			printf("Reserved 2 GiB of virtual address space.\n");
+			// printf("Reserved 2 GiB of virtual address space.\n");
 		}
 
 		// The minimum amount of memory one can allocate with VirtualAlloc is a single page.
 		U32 page_size = get_page_size(); // Windows typically uses 4K pages
-		AssertMessage(a->minimum_block_size > 0 && (a->minimum_block_size % page_size) == 0, "The minimum block size is not a multiple of the OS page size.\n");
+		AssertMessage(a->minimum_block_size > 0 && (a->minimum_block_size % page_size) == 0, 
+		              "The minimum block size is not a multiple of the OS page size.\n");
 
 		size_t block_size;
 		if (size > a->minimum_block_size) {
@@ -311,20 +316,20 @@ void *arena_alloc(Arena *a, size_t size, size_t alignment = DEFAULT_ALIGNMENT) {
 			block_size = a->minimum_block_size;
 		}
 
-		// TODO(Jan): This is not correct, I think. commit_memory returns an address smaller than a->base + a->used.
 		void *result = commit_memory(a->base + a->used, block_size);
 		if (!result) {
 			printf("Fatal: Failed to commit a memory block of size %llu.\n", block_size);
 			exit_process(1);
 		}
 
-		printf("Comitted %llu MiB of virtual memory.\n", block_size / (1024 * 1024));
+		//printf("Committed %llu MiB of virtual memory.\n", block_size / (1024 * 1024));
 
 		a->size += block_size;
 	}
 
 	memory = a->base + a->used;
 	a->used += size;
+
 	return memory;
 }
 
@@ -332,8 +337,14 @@ void arena_free_all(Arena *a) {
 	a->used = 0;
 }
 
-// Temp Arena
-// TODO(Jan)
+// Scratch arena
+Arena *begin_scratch(void) {
+	return &_scratch;
+}
+
+void end_scratch(Arena *scratch) {
+	arena_free_all(scratch);
+}
 
 // Hashing function which is effective for ASCII strings: djb2
 U64 hash_ascii(char *string) {
@@ -403,14 +414,14 @@ void notification_window(char *title, char *text) {
 	MessageBox(NULL, text, title, MB_ICONEXCLAMATION);
 }
 
-void print_format(char *format, ...) {
-	va_list args;
-	va_start(args, format);
+// void print_format(char *format, ...) {
+// 	va_list args;
+// 	va_start(args, format);
 
-	vprintf(format, args);
+// 	vprintf(format, args);
 
-	va_end(args);
-}
+// 	va_end(args);
+// }
 
 void exit_process(int return_code) {
 	ExitProcess(return_code);
