@@ -4,6 +4,7 @@
 
 int main(void) {
 	Arena perm;
+	arena_init(&perm, Megabytes(128));
 
 	double start = get_time_in_seconds();
 	Parse_Result parsed = parse(&perm, "../res/test.obj");

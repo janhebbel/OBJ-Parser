@@ -272,6 +272,7 @@ size_t get_aligned_size(size_t size, size_t alignment) {
 }
 
 // Arena functions
+void arena_init(Arena *arena, S64 minimum_block_size = Megabytes(1)) {
 	arena->base = 0;
 	arena->size = 0;
 	arena->used = 0;
